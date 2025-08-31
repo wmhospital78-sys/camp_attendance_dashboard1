@@ -130,3 +130,17 @@ with tab5:
     if st.button("⬇️ Download Current Data"):
         staff_df.to_excel("staff_data_export.xlsx", index=False)
         st.success("✅ Data Exported Successfully as staff_data_export.xlsx")
+        import io
+
+# Example: exporting dataframe
+output = io.BytesIO()
+with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    df.to_excel(writer, index=False, sheet_name="Staff Data")
+
+st.success("✅ Data Exported Successfully!")
+st.download_button(
+    label="📥 Download Exported Excel",
+    data=output.getvalue(),
+    file_name="staff_data_export.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
