@@ -134,14 +134,25 @@ with tab5:
         import io
 
 # Example: exporting dataframe
-output = io.BytesIO()
-with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-    df.to_excel(writer, index=False, sheet_name="Staff Data")
+# --- Staff Data Export Section ---
+import io
 
-st.success("✅ Data Exported Successfully!")
-st.download_button(
-    label="📥 Download Exported Excel",
-    data=output.getvalue(),
-    file_name="staff_data_export.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+st.subheader("📤 Export Staff Data")
+
+if st.button("Export Staff Data to Excel"):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        # Example: export your staff dataframes separately
+        doctors.to_excel(writer, index=False, sheet_name="Doctors")
+        nursing_staff.to_excel(writer, index=False, sheet_name="Nursing Staff")
+        teaching_faculty.to_excel(writer, index=False, sheet_name="Teaching Faculty")
+        pgs.to_excel(writer, index=False, sheet_name="PGs")
+        internees.to_excel(writer, index=False, sheet_name="Internees")
+
+    st.success("✅ Data Exported Successfully!")
+    st.download_button(
+        label="📥 Download Exported Excel",
+        data=output.getvalue(),
+        file_name="staff_data_export.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
