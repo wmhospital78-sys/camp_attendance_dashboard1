@@ -6,7 +6,7 @@ import plotly.express as px
 import io
 from datetime import date
 
-# Try to import AgGrid for a richer inline-edit experience; fallback available
+# Try to import AgGrid for a richer inline-edit experience
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
     HAS_AGGRID = True
@@ -83,20 +83,19 @@ def load_setting(key, default=None):
 
 # default theme
 DEFAULT_THEME = {
-    "primary": "#131321",   # sidebar color
-    "card": "#1e1e2f",      # card color
-    "accent": "#9b6bff",    # accent gradient color
-    "bg": "#0f0f13",        # app background
-    "text": "#EAEAEA"       # text color
+    "primary": "#131321",
+    "card": "#1e1e2f",
+    "accent": "#9b6bff",
+    "bg": "#0f0f13",
+    "text": "#EAEAEA"
 }
 
-# ensure settings exist
 for k, v in DEFAULT_THEME.items():
     if load_setting(k) is None:
         save_setting(k, v)
 
 # ---------------------------
-# CSS builder using theme
+# CSS builder
 # ---------------------------
 def render_css():
     primary = load_setting("primary", DEFAULT_THEME["primary"])
@@ -118,35 +117,16 @@ def render_css():
         padding: 18px;
         box-shadow: 6px 0 30px rgba(0,0,0,0.6);
     }}
-    .sidebar-college {{
-        font-weight: 700;
-        font-size: 18px;
-        color: {accent};
-        text-align: center;
-        margin-bottom: 6px;
-    }}
-    .sidebar-welcome {{
-        text-align:center;
-        color: {text};
-        margin-bottom: 10px;
-        font-weight:600;
-    }}
     .dash-card {{
         background: {card};
         padding: 18px;
         border-radius: 12px;
         box-shadow: 0 8px 30px rgba(0,0,0,0.6);
         color: {text};
+        margin-bottom:12px;
     }}
-    .dash-card h3 {{
-        margin: 0;
-        font-size: 22px;
-        font-weight:700;
-    }}
-    .dash-card p {{
-        margin:0;
-        color: #bdbdbd;
-    }}
+    .dash-card h3 {{ margin:0;font-size:22px;font-weight:700; }}
+    .dash-card p {{ margin:0;color:#bdbdbd; }}
     div.stButton>button {{
         background: linear-gradient(90deg, {accent}, #6d3cff) !important;
         color: white;
@@ -283,7 +263,7 @@ def update_camps_attended():
     conn.close()
 
 # ---------------------------
-# UI - Sidebar & Header
+# Sidebar & Header
 # ---------------------------
 st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 st.markdown(f"""
@@ -312,7 +292,6 @@ render_css()
 # ---------------------------
 if page == "Dashboard":
     st.subheader("📊 Overview")
-
     staff_df = fetch_staff_df()
     camps_df = fetch_camps_df()
 
@@ -338,127 +317,4 @@ if page == "Dashboard":
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=load_setting('text', DEFAULT_THEME['text']))
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### PGs by Year")
-    if not staff_df[staff_df["category"]=="PG"].empty:
-        pg_counts = staff_df[staff_df["category"]=="PG"].groupby("pg_year").size().reset_index(name="count")
-        fig2 = px.bar(pg_counts, x="pg_year", y="count", title="PGs by Year", text="count")
-        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=load_setting('text', DEFAULT_THEME['text']))
-        st.plotly_chart(fig2, use_container_width=True)
-
-# ---------------------------
-# PAGE: Add Staff
-# ---------------------------
-elif page == "Add Staff":
-    st.subheader("➕ Add Staff (individual or Excel upload)")
-
-    with st.form("add_staff_form"):
-        serial_no = st.number_input("Serial Number", min_value=1, step=1)
-        name = st.text_input("Name")
-        category = st.selectbox("Category", ["Doctor", "Nurse", "Faculty", "PG", "Internee"])
-        pg_year = st.selectbox("PG Year (if PG)", ["", "1st Year", "2nd Year", "3rd Year"]) if category=="PG" else ""
-        joining_date = st.date_input("Joining Date", value=date.today())
-        submitted = st.form_submit_button("Add Staff")
-        if submitted:
-            insert_staff(serial_no, name, category, pg_year, joining_date, 0)
-            st.success(f"Added {name}")
-
-    st.markdown("---")
-    st.markdown("**Or upload Excel to bulk add / update**")
-    uploaded = st.file_uploader("Upload Excel (.xlsx) containing staff columns", type=["xlsx"])
-    if uploaded:
-        df_in = pd.read_excel(uploaded)
-        mode = st.radio("Import mode", options=["Append", "Replace existing"], index=0)
-        replace = (mode == "Replace existing")
-        import_staff_from_df(df_in, replace=replace)
-        st.success("Excel imported into database.")
-
-# ---------------------------
-# PAGE: Manage Staff
-# ---------------------------
-elif page == "Manage Staff":
-    st.subheader("👩‍⚕️ Manage Staff (edit / delete)")
-
-    staff_df = fetch_staff_df()
-    if staff_df.empty:
-        st.info("No staff found. Add staff from 'Add Staff' or upload Excel.")
-    else:
-        st.markdown("""
-            <style>
-            .full-width-card {
-                background: """ + load_setting('card', DEFAULT_THEME['card']) + """;
-                padding: 16px;
-                border-radius: 12px;
-                box-shadow: 0 8px 30px rgba(0,0,0,0.6);
-                margin-bottom: 12px;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-
-        if HAS_AGGRID:
-            gb = GridOptionsBuilder.from_dataframe(staff_df)
-            gb.configure_default_column(editable=True, resizable=True, sortable=True)
-            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-            gb.configure_pagination(paginationAutoPageSize=True)
-            gridOptions = gb.build()
-
-            st.markdown('<div class="full-width-card">', unsafe_allow_html=True)
-            grid_response = AgGrid(
-                staff_df,
-                gridOptions=gridOptions,
-                update_mode=GridUpdateMode.MODEL_CHANGED,
-                allow_unsafe_jscode=True,
-                theme="dark",
-                height=400
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            updated = pd.DataFrame(grid_response["data"])
-            if st.button("💾 Save edits to database"):
-                for _, r in updated.iterrows():
-                    update_staff_row(r.to_dict())
-                st.success("✅ Staff data updated.")
-
-            sel = grid_response.get("selected_rows", [])
-            if sel:
-                sel_ids = [s["id"] for s in sel]
-                if st.button("🗑️ Delete selected staff"):
-                    for sid in sel_ids:
-                        delete_staff_by_id(int(sid))
-                    st.success(f"Deleted {len(sel_ids)} staff.")
-                    update_camps_attended()
-        else:
-            edited = st.data_editor(staff_df, use_container_width=True)
-            if st.button("💾 Save edits"):
-                for _, r in edited.iterrows():
-                    update_staff_row(r.to_dict())
-                st.success("✅ Staff updated.")
-            del_ids = st.multiselect("Select staff IDs to delete", staff_df["id"].tolist())
-            if st.button("🗑️ Delete selected"):
-                for sid in del_ids:
-                    delete_staff_by_id(sid)
-                st.success(f"Deleted {len(del_ids)} staff.")
-                update_camps_attended()
-
-# ---------------------------
-# PAGE: Manage Camps
-# ---------------------------
-elif page == "Manage Camps":
-    st.subheader("🏥 Manage Camps & Assignments")
-    camps_df = fetch_camps_df()
-    with st.form("add_camp"):
-        title = st.text_input("Camp Title")
-        camp_date = st.date_input("Camp Date", value=date.today())
-        submitted = st.form_submit_button("Add Camp")
-        if submitted:
-            insert_camp(title, camp_date)
-            st.success("Camp added.")
-
-    st.markdown("### Existing camps")
-    st.dataframe(camps_df, use_container_width=True)
-
-    st.markdown("### Assign staff to a camp")
-    camps_df = fetch_camps_df()
-    staff_df = fetch_staff_df()
-    if not camps_df.empty and not staff_df.empty:
-        camp_choice = st.selectbox("Select camp", camps_df["title"].tolist())
-        selected_camp_id = int(camps_df
+    st.markdown("### PGs by Year
