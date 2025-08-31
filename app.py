@@ -1,266 +1,170 @@
 import streamlit as st
-import pandas as pd
 import plotly.express as px
 import sqlite3
-import io
+import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
-# =============================
-# DATABASE SETUP
-# =============================
-conn = sqlite3.connect("hospital.db", check_same_thread=False)
-c = conn.cursor()
+# ===================== PAGE CONFIG =====================
+st.set_page_config(
+    page_title="College Staff Dashboard",
+    page_icon="🏥",
+    layout="wide"
+)
 
-# Staff Table
+# ===================== DARK THEME CSS =====================
+st.markdown("""
+    <style>
+        /* Background */
+        .stApp {
+            background-color: #131321;
+            color: #ffffff;
+        }
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #1c1c2e;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: -2px 0px 10px rgba(0,0,0,0.8);
+        }
+
+        /* Cards */
+        .card {
+            background: #1e1e2f;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+
+        .card h2 {
+            color: #9b6bff;
+            font-size: 28px;
+        }
+
+        .card p {
+            color: #bbbbbb;
+            font-size: 18px;
+        }
+
+        /* Welcome Message */
+        .welcome {
+            font-size: 26px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .college {
+            font-size: 20px;
+            color: #9b6bff;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# ===================== HEADER =====================
+st.markdown('<p class="college">White Memorial Homoeopathic Medical College & Hospital</p>', unsafe_allow_html=True)
+st.markdown('<p class="welcome">👋 Welcome, Dr. Shabin S</p>', unsafe_allow_html=True)
+
+st.write("---")
+
+# ===================== DATABASE =====================
+conn = sqlite3.connect("staff_data.db", check_same_thread=False)
+c = conn.cursor()
 c.execute("""
 CREATE TABLE IF NOT EXISTS staff (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     serial_no INTEGER,
     name TEXT,
     category TEXT,
-    joining_date TEXT,
     pg_year TEXT,
+    joining_date TEXT,
     camps_attended INTEGER
-)
-""")
-
-# Camps Table
-c.execute("""
-CREATE TABLE IF NOT EXISTS camps (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    camp_date TEXT
-)
-""")
-
-# Assignments Table
-c.execute("""
-CREATE TABLE IF NOT EXISTS camp_assignments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    camp_id INTEGER,
-    staff_id INTEGER,
-    FOREIGN KEY (camp_id) REFERENCES camps(id),
-    FOREIGN KEY (staff_id) REFERENCES staff(id)
 )
 """)
 conn.commit()
 
+# ===================== DASHBOARD OVERVIEW =====================
+st.subheader("📊 Dashboard Overview")
 
-# =============================
-# HELPER FUNCTIONS
-# =============================
-def get_staff():
-    return pd.read_sql("SELECT * FROM staff", conn)
+c.execute("SELECT COUNT(*) FROM staff")
+total_staff = c.fetchone()[0]
 
-def get_camps():
-    return pd.read_sql("SELECT * FROM camps", conn)
+c.execute("SELECT COUNT(*) FROM staff WHERE category='Doctor'")
+doctors = c.fetchone()[0]
 
-def add_staff(serial_no, name, category, joining_date, pg_year, camps_attended):
-    c.execute("INSERT INTO staff (serial_no, name, category, joining_date, pg_year, camps_attended) VALUES (?, ?, ?, ?, ?, ?)",
-              (serial_no, name, category, joining_date, pg_year, camps_attended))
-    conn.commit()
+c.execute("SELECT COUNT(*) FROM staff WHERE category='Nurse'")
+nurses = c.fetchone()[0]
 
-def delete_staff(staff_id):
-    c.execute("DELETE FROM staff WHERE id=?", (staff_id,))
-    conn.commit()
+c.execute("SELECT COUNT(*) FROM staff WHERE category='Faculty'")
+faculty = c.fetchone()[0]
 
-def update_staff(staff_df):
-    c.execute("DELETE FROM staff")  # Clear
-    conn.commit()
-    staff_df.to_sql("staff", conn, if_exists="append", index=False)
+c.execute("SELECT COUNT(*) FROM staff WHERE category='PG'")
+pgs = c.fetchone()[0]
 
+c.execute("SELECT COUNT(*) FROM staff WHERE category='Internee'")
+internees = c.fetchone()[0]
 
-def add_camp(title, camp_date):
-    c.execute("INSERT INTO camps (title, camp_date) VALUES (?, ?)", (title, camp_date))
-    conn.commit()
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+with col1:
+    st.markdown(f"<div class='card'><h2>{total_staff}</h2><p>Total Staff</p></div>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"<div class='card'><h2>{doctors}</h2><p>Doctors</p></div>", unsafe_allow_html=True)
+with col3:
+    st.markdown(f"<div class='card'><h2>{nurses}</h2><p>Nursing Staff</p></div>", unsafe_allow_html=True)
+with col4:
+    st.markdown(f"<div class='card'><h2>{faculty}</h2><p>Faculty</p></div>", unsafe_allow_html=True)
+with col5:
+    st.markdown(f"<div class='card'><h2>{pgs}</h2><p>PGs</p></div>", unsafe_allow_html=True)
+with col6:
+    st.markdown(f"<div class='card'><h2>{internees}</h2><p>Internees</p></div>", unsafe_allow_html=True)
 
-def assign_staff_to_camp(camp_id, staff_ids):
-    for sid in staff_ids:
-        c.execute("INSERT INTO camp_assignments (camp_id, staff_id) VALUES (?, ?)", (camp_id, sid))
-    conn.commit()
+# ===================== CHARTS =====================
+df = pd.read_sql("SELECT category FROM staff", conn)
+if not df.empty:
+    pie = px.pie(df, names="category", title="Staff Distribution")
+    st.plotly_chart(pie, use_container_width=True)
 
-# =============================
-# CUSTOM CSS FOR MODERN LOOK
-# =============================
-st.markdown("""
-<style>
-/* Dark Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #131321 !important;
-    color: white !important;
-    box-shadow: 2px 0px 15px rgba(0,0,0,0.6);
-}
+# ===================== MANAGE STAFF =====================
+st.subheader("👩‍⚕️ Manage Staff")
 
-/* Sidebar text */
-[data-testid="stSidebar"] * {
-    color: white !important;
-    font-weight: 500;
-}
+with st.expander("➕ Add New Staff"):
+    with st.form("staff_form"):
+        serial_no = st.number_input("Serial Number", min_value=1)
+        name = st.text_input("Name")
+        category = st.selectbox("Category", ["Doctor", "Nurse", "Faculty", "PG", "Internee"])
+        pg_year = st.selectbox("PG Year", ["-", "1st Year", "2nd Year", "3rd Year"]) if category == "PG" else "-"
+        joining_date = st.date_input("Joining Date")
+        camps_attended = st.number_input("Camps Attended", min_value=0)
 
-/* Dashboard Cards */
-.card {
-    background: #1e1e2f;
-    color: white;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    text-align: center;
-}
-.card h3 {
-    margin: 0;
-    font-size: 24px;
-}
-.card p {
-    font-size: 18px;
-    opacity: 0.8;
-}
-</style>
-""", unsafe_allow_html=True)
+        submitted = st.form_submit_button("Save")
+        if submitted:
+            c.execute("INSERT INTO staff (serial_no, name, category, pg_year, joining_date, camps_attended) VALUES (?,?,?,?,?,?)",
+                      (serial_no, name, category, pg_year, str(joining_date), camps_attended))
+            conn.commit()
+            st.success("✅ Staff added successfully!")
 
+st.write("### 📋 Staff Records")
+df_staff = pd.read_sql("SELECT * FROM staff", conn)
+if not df_staff.empty:
+    gb = GridOptionsBuilder.from_dataframe(df_staff)
+    gb.configure_pagination()
+    gb.configure_side_bar()
+    gb.configure_default_column(editable=True)
+    gridOptions = gb.build()
 
-# =============================
-# SIDEBAR NAVIGATION
-# =============================
-st.sidebar.title("🏥 Hospital Dashboard")
-menu = st.sidebar.radio("Navigate", ["📊 Overview", "👩‍⚕️ Manage Staff", "🏥 Manage Camps", "📂 Export Data"])
+    grid_table = AgGrid(df_staff, gridOptions=gridOptions,
+                        update_mode=GridUpdateMode.MODEL_CHANGED,
+                        height=300)
 
-# =============================
-# OVERVIEW
-# =============================
-if menu == "📊 Overview":
-    st.title("📊 Dashboard Overview")
+    # Update database when edited
+    updated = grid_table["data"]
+    if not updated.empty:
+        for i, row in updated.iterrows():
+            c.execute("""
+                UPDATE staff SET serial_no=?, name=?, category=?, pg_year=?, joining_date=?, camps_attended=? WHERE id=?
+            """, (row["serial_no"], row["name"], row["category"], row["pg_year"], row["joining_date"], row["camps_attended"], row["id"]))
+        conn.commit()
 
-    staff_df = get_staff()
+else:
+    st.info("No staff data available. Please add staff.")
 
-    total_staff = len(staff_df)
-    doctors = len(staff_df[staff_df['category']=="Doctor"])
-    nurses = len(staff_df[staff_df['category']=="Nurse"])
-    faculty = len(staff_df[staff_df['category']=="Faculty"])
-    pgs = len(staff_df[staff_df['category']=="PG"])
-    internees = len(staff_df[staff_df['category']=="Internee"])
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"<div class='card'><h3>{total_staff}</h3><p>Total Staff</p></div>", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"<div class='card'><h3>{doctors}</h3><p>Doctors</p></div>", unsafe_allow_html=True)
-    with col3:
-        st.markdown(f"<div class='card'><h3>{nurses}</h3><p>Nursing Staff</p></div>", unsafe_allow_html=True)
-
-    col4, col5 = st.columns(2)
-    with col4:
-        st.markdown(f"<div class='card'><h3>{faculty}</h3><p>Teaching Faculty</p></div>", unsafe_allow_html=True)
-    with col5:
-        st.markdown(f"<div class='card'><h3>{pgs}</h3><p>PGs</p></div>", unsafe_allow_html=True)
-
-    st.markdown(f"<div class='card'><h3>{internees}</h3><p>Internees</p></div>", unsafe_allow_html=True)
-
-    # Pie Chart
-    if not staff_df.empty:
-        fig = px.pie(staff_df, names="category", title="Staff Distribution by Category")
-        st.plotly_chart(fig, use_container_width=True)
-
-        pg_df = staff_df[staff_df["category"]=="PG"]
-        if not pg_df.empty:
-            fig2 = px.bar(pg_df, x="pg_year", title="PGs by Year")
-            st.plotly_chart(fig2, use_container_width=True)
-
-
-# =============================
-# MANAGE STAFF
-# =============================
-elif menu == "👩‍⚕️ Manage Staff":
-    st.title("👩‍⚕️ Manage Staff")
-
-    with st.form("add_staff_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            serial_no = st.number_input("Serial Number", min_value=1, step=1)
-            name = st.text_input("Name")
-            category = st.selectbox("Category", ["Doctor", "Nurse", "Faculty", "PG", "Internee"])
-        with col2:
-            joining_date = st.date_input("Joining Date")
-            pg_year = st.selectbox("PG Year", ["NA", "1st Year", "2nd Year", "3rd Year"]) if category=="PG" else "NA"
-            camps_attended = st.number_input("Camps Attended", min_value=0, step=1)
-
-        submitted = st.form_submit_button("➕ Add Staff")
-        if submitted and name:
-            add_staff(serial_no, name, category, str(joining_date), pg_year, camps_attended)
-            st.success("✅ Staff Added!")
-
-    staff_df = get_staff()
-
-    if not staff_df.empty:
-        st.subheader("📋 Staff Records (Editable Table)")
-        gb = GridOptionsBuilder.from_dataframe(staff_df)
-        gb.configure_pagination()
-        gb.configure_side_bar()
-        gb.configure_default_column(editable=True)
-        gb.configure_selection('single', use_checkbox=True)
-        grid_options = gb.build()
-
-        grid = AgGrid(
-            staff_df,
-            gridOptions=grid_options,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
-            allow_unsafe_jscode=True,
-            theme="alpine"
-        )
-
-        if st.button("💾 Save Changes"):
-            new_df = grid["data"]
-            update_staff(pd.DataFrame(new_df))
-            st.success("✅ Staff Updated!")
-
-        if grid["selected_rows"]:
-            selected_id = grid["selected_rows"][0]["id"]
-            if st.button("🗑 Delete Selected"):
-                delete_staff(selected_id)
-                st.warning("❌ Staff Deleted!")
-
-
-    uploaded_file = st.file_uploader("⬆ Upload Excel to Replace Staff Data", type=["xlsx"])
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        update_staff(df)
-        st.success("✅ Staff Data Replaced with Excel Upload!")
-
-
-# =============================
-# MANAGE CAMPS
-# =============================
-elif menu == "🏥 Manage Camps":
-    st.title("🏥 Manage Camps")
-
-    with st.form("add_camp_form"):
-        title = st.text_input("Camp Title")
-        camp_date = st.date_input("Camp Date")
-        submitted = st.form_submit_button("➕ Add Camp")
-        if submitted and title:
-            add_camp(title, str(camp_date))
-            st.success("✅ Camp Added!")
-
-    camps_df = get_camps()
-    st.dataframe(camps_df)
-
-
-# =============================
-# EXPORT DATA
-# =============================
-elif menu == "📂 Export Data":
-    st.title("📂 Export All Data")
-
-    staff_df = get_staff()
-    camps_df = get_camps()
-
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        staff_df.to_excel(writer, index=False, sheet_name="Staff")
-        camps_df.to_excel(writer, index=False, sheet_name="Camps")
-
-    st.download_button(
-        label="⬇ Download All Data as Excel",
-        data=output.getvalue(),
-        file_name="hospital_data_export.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
