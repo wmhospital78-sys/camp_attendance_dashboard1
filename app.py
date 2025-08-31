@@ -317,4 +317,13 @@ if page == "Dashboard":
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=load_setting('text', DEFAULT_THEME['text']))
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### PGs by Year
+    st.markdown("### PGs by Year)
+                    st.markdown("### PGs by Year")
+    pg_df = staff_df[staff_df["category"]=="PG"]
+    if not pg_df.empty:
+        pg_counts = pg_df.groupby("pg_year").size().reset_index(name="count")
+        fig2 = px.bar(pg_counts, x="pg_year", y="count", title="PGs by Year", text="count",
+                      color="pg_year", color_discrete_sequence=px.colors.qualitative.Dark24)
+        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                           font_color=load_setting('text', DEFAULT_THEME['text']))
+        st.plotly_chart(fig2, use_container_width=True)
