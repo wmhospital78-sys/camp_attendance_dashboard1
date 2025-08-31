@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
 import os
+import io
 
 # App Title
 st.set_page_config(page_title="Camp Attendance Dashboard", layout="wide")
