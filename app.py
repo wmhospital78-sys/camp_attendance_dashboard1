@@ -18,7 +18,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS staff (
             )''')
 conn.commit()
 
-# ================== SIDEBAR STYLING ==================
+# ================== SIDEBAR DESIGN ==================
 def sidebar_ui():
     st.markdown(
         """
@@ -26,11 +26,7 @@ def sidebar_ui():
         [data-testid="stSidebar"] {
             background-color: #131321;
             padding: 1rem;
-            box-shadow: 4px 0px 10px rgba(0,0,0,0.7);
-        }
-        [data-testid="stSidebar"] .css-1v0mbdj, 
-        [data-testid="stSidebar"] .css-17lntkn {
-            display: none;
+            box-shadow: 4px 0px 15px rgba(0,0,0,0.7);
         }
         .sidebar-title {
             font-size: 20px;
@@ -80,7 +76,7 @@ def sidebar_ui():
 
 # ================== PAGES ==================
 def dashboard():
-    st.title("📊 Hospital Overview")
+    st.title("📊 Hospital Dashboard")
     staff_count = c.execute("SELECT COUNT(*) FROM staff").fetchone()[0]
     st.metric("👨‍⚕️ Total Staff", staff_count)
 
@@ -119,16 +115,21 @@ def manage_staff():
     gb.configure_selection('single', use_checkbox=True)
     gridoptions = gb.build()
 
-    grid = AgGrid(df, gridOptions=gridoptions, update_mode=GridUpdateMode.MODEL_CHANGED, height=400)
+    grid = AgGrid(
+        df, 
+        gridOptions=gridoptions, 
+        update_mode=GridUpdateMode.VALUE_CHANGED, 
+        height=400
+    )
 
-    if grid["data"] is not None:
-        updated_df = grid["data"]
-        if st.button("💾 Save Changes"):
-            for index, row in updated_df.iterrows():
-                c.execute("UPDATE staff SET name=?, department=?, designation=?, joining_date=?, phone=?, email=? WHERE id=?",
-                          (row["name"], row["department"], row["designation"], row["joining_date"], row["phone"], row["email"], row["id"]))
-            conn.commit()
-            st.success("✅ Records updated!")
+    updated_df = pd.DataFrame(grid["data"])
+
+    if st.button("💾 Save Changes"):
+        for index, row in updated_df.iterrows():
+            c.execute("UPDATE staff SET name=?, department=?, designation=?, joining_date=?, phone=?, email=? WHERE id=?",
+                      (row["name"], row["department"], row["designation"], row["joining_date"], row["phone"], row["email"], row["id"]))
+        conn.commit()
+        st.success("✅ All changes saved to database!")
 
     if st.button("🗑️ Delete Selected"):
         sel = grid["selected_rows"]
@@ -146,19 +147,7 @@ def reports():
 
 def settings():
     st.title("⚙️ Settings")
-    theme = st.radio("Choose Theme", ["Dark", "Light"])
-    if theme == "Light":
-        st.markdown(
-            """<style>[data-testid="stSidebar"] {background:#f9f9f9; color:black;}</style>""",
-            unsafe_allow_html=True
-        )
-        st.success("🌞 Light theme applied!")
-    else:
-        st.markdown(
-            """<style>[data-testid="stSidebar"] {background:#131321; color:white;}</style>""",
-            unsafe_allow_html=True
-        )
-        st.success("🌙 Dark theme applied!")
+    st.info("Future options for theme / user preferences can go here.")
 
 # ================== MAIN ==================
 def main():
