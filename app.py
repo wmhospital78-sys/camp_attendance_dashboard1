@@ -4,7 +4,6 @@ import pandas as pd
 import sqlite3
 import plotly.express as px
 import io
-import os
 from datetime import date
 
 # Try to import AgGrid for a richer inline-edit experience; fallback available
@@ -82,7 +81,7 @@ def load_setting(key, default=None):
     conn.close()
     return row[0] if row else default
 
-# default theme (can be changed in Settings)
+# default theme
 DEFAULT_THEME = {
     "primary": "#131321",   # sidebar color
     "card": "#1e1e2f",      # card color
@@ -108,12 +107,10 @@ def render_css():
 
     css = f"""
     <style>
-    /* App background & text */
     .stApp {{
         background: {bg};
         color: {text};
     }}
-    /* Sidebar */
     section[data-testid="stSidebar"] {{
         background: {primary} !important;
         color: {text} !important;
@@ -121,10 +118,6 @@ def render_css():
         padding: 18px;
         box-shadow: 6px 0 30px rgba(0,0,0,0.6);
     }}
-    section[data-testid="stSidebar"] .css-1d391kg {{
-        background: transparent;
-    }}
-    /* Sidebar headings */
     .sidebar-college {{
         font-weight: 700;
         font-size: 18px;
@@ -138,7 +131,6 @@ def render_css():
         margin-bottom: 10px;
         font-weight:600;
     }}
-    /* Cards */
     .dash-card {{
         background: {card};
         padding: 18px;
@@ -155,7 +147,6 @@ def render_css():
         margin:0;
         color: #bdbdbd;
     }}
-    /* Buttons */
     div.stButton>button {{
         background: linear-gradient(90deg, {accent}, #6d3cff) !important;
         color: white;
@@ -170,7 +161,6 @@ def render_css():
     """
     st.markdown(css, unsafe_allow_html=True)
 
-# render CSS once
 render_css()
 
 # ---------------------------
@@ -215,9 +205,7 @@ def import_staff_from_df(df: pd.DataFrame, replace=False):
     if replace:
         conn.execute("DELETE FROM staff")
     df = df.copy()
-    # ensure columns exist; map expected names
     expected = ["serial_no","name","category","pg_year","joining_date","camps_attended"]
-    # try several alternatives for column names
     col_map = {}
     for col in df.columns:
         lc = col.strip().lower()
@@ -234,12 +222,10 @@ def import_staff_from_df(df: pd.DataFrame, replace=False):
         elif "camp" in lc or "attend" in lc:
             col_map[col] = "camps_attended"
     df = df.rename(columns=col_map)
-    # fill missing expected columns
     for e in expected:
         if e not in df.columns:
             df[e] = None
-    df = df[expected]
-    df = df.fillna({"camps_attended":0})
+    df = df[expected].fillna({"camps_attended":0})
     df.to_sql("staff", conn, if_exists="append", index=False)
     conn.commit()
     conn.close()
@@ -278,16 +264,28 @@ def assign_staff(camp_id, staff_ids):
     conn = get_conn()
     cur = conn.cursor()
     for sid in staff_ids:
-        # avoid duplicates
         cur.execute("INSERT OR IGNORE INTO assignments(camp_id, staff_id) VALUES (?, ?)", (camp_id, sid))
+    conn.commit()
+    conn.close()
+    update_camps_attended()
+
+def update_camps_attended():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE staff SET camps_attended = 0")
+    cur.execute("""
+        UPDATE staff
+        SET camps_attended = (
+            SELECT COUNT(*) FROM assignments WHERE staff_id = staff.id
+        )
+    """)
     conn.commit()
     conn.close()
 
 # ---------------------------
 # UI - Sidebar & Header
 # ---------------------------
-st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)  # spacing
-# Big college name on top of page (outside sidebar per user's request)
+st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 st.markdown(f"""
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
@@ -304,12 +302,9 @@ st.markdown(f"""
     <hr style="opacity:0.15"/>
 """, unsafe_allow_html=True)
 
-# Sidebar navigation (modern styled)
 st.sidebar.markdown(f"<div style='padding:8px 6px; color:{load_setting('text')}'>", unsafe_allow_html=True)
 page = st.sidebar.radio("Navigate", ["Dashboard", "Add Staff", "Manage Staff", "Manage Camps", "Reports", "Settings"])
 st.sidebar.markdown("</div>", unsafe_allow_html=True)
-
-# render CSS again if theme changed
 render_css()
 
 # ---------------------------
@@ -321,7 +316,6 @@ if page == "Dashboard":
     staff_df = fetch_staff_df()
     camps_df = fetch_camps_df()
 
-    # Metrics
     total_staff = len(staff_df)
     doctors = len(staff_df[staff_df["category"] == "Doctor"])
     nursing = len(staff_df[staff_df["category"] == "Nurse"])
@@ -370,10 +364,9 @@ elif page == "Add Staff":
 
     st.markdown("---")
     st.markdown("**Or upload Excel to bulk add / update**")
-    uploaded = st.file_uploader("Upload Excel (.xlsx) containing staff columns (Serial/Name/Category/PG Year/Joining Date/Camps Attended)", type=["xlsx"])
+    uploaded = st.file_uploader("Upload Excel (.xlsx) containing staff columns", type=["xlsx"])
     if uploaded:
         df_in = pd.read_excel(uploaded)
-        # Ask whether to replace or append
         mode = st.radio("Import mode", options=["Append", "Replace existing"], index=0)
         replace = (mode == "Replace existing")
         import_staff_from_df(df_in, replace=replace)
@@ -389,40 +382,62 @@ elif page == "Manage Staff":
     if staff_df.empty:
         st.info("No staff found. Add staff from 'Add Staff' or upload Excel.")
     else:
+        st.markdown("""
+            <style>
+            .full-width-card {
+                background: """ + load_setting('card', DEFAULT_THEME['card']) + """;
+                padding: 16px;
+                border-radius: 12px;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+                margin-bottom: 12px;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
         if HAS_AGGRID:
             gb = GridOptionsBuilder.from_dataframe(staff_df)
+            gb.configure_default_column(editable=True, resizable=True, sortable=True)
+            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
             gb.configure_pagination(paginationAutoPageSize=True)
-            gb.configure_default_column(editable=True)
-            gb.configure_selection(selection_mode="single", use_checkbox=True)
             gridOptions = gb.build()
-            grid_response = AgGrid(staff_df, gridOptions=gridOptions, update_mode=GridUpdateMode.MODEL_CHANGED, allow_unsafe_jscode=True, theme="dark", height=360)
+
+            st.markdown('<div class="full-width-card">', unsafe_allow_html=True)
+            grid_response = AgGrid(
+                staff_df,
+                gridOptions=gridOptions,
+                update_mode=GridUpdateMode.MODEL_CHANGED,
+                allow_unsafe_jscode=True,
+                theme="dark",
+                height=400
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+
             updated = pd.DataFrame(grid_response["data"])
-            # Save edits button
-            if st.button("Save changes to database"):
-                # iterate rows and update
+            if st.button("💾 Save edits to database"):
                 for _, r in updated.iterrows():
                     update_staff_row(r.to_dict())
-                st.success("Updated database with edits.")
-            # delete selected
+                st.success("✅ Staff data updated.")
+
             sel = grid_response.get("selected_rows", [])
             if sel:
-                sid = sel[0].get("id")
-                if st.button("Delete selected staff"):
-                    delete_staff_by_id(int(sid))
-                    st.success("Deleted staff.")
+                sel_ids = [s["id"] for s in sel]
+                if st.button("🗑️ Delete selected staff"):
+                    for sid in sel_ids:
+                        delete_staff_by_id(int(sid))
+                    st.success(f"Deleted {len(sel_ids)} staff.")
+                    update_camps_attended()
         else:
-            # fallback to data_editor
             edited = st.data_editor(staff_df, use_container_width=True)
-            if st.button("Save edits"):
-                # apply row by row update
+            if st.button("💾 Save edits"):
                 for _, r in edited.iterrows():
                     update_staff_row(r.to_dict())
-                st.success("Saved edits to DB.")
-            # delete by id
-            del_id = st.number_input("Enter staff ID to delete", min_value=0, step=1)
-            if st.button("Delete by ID"):
-                delete_staff_by_id(int(del_id))
-                st.success("Deleted staff id " + str(del_id))
+                st.success("✅ Staff updated.")
+            del_ids = st.multiselect("Select staff IDs to delete", staff_df["id"].tolist())
+            if st.button("🗑️ Delete selected"):
+                for sid in del_ids:
+                    delete_staff_by_id(sid)
+                st.success(f"Deleted {len(del_ids)} staff.")
+                update_camps_attended()
 
 # ---------------------------
 # PAGE: Manage Camps
@@ -446,75 +461,4 @@ elif page == "Manage Camps":
     staff_df = fetch_staff_df()
     if not camps_df.empty and not staff_df.empty:
         camp_choice = st.selectbox("Select camp", camps_df["title"].tolist())
-        selected_camp_id = int(camps_df[camps_df["title"]==camp_choice]["id"].iloc[0])
-        staff_map = staff_df.set_index("id")["name"].to_dict()
-        picks = st.multiselect("Select staff", options=list(staff_map.values()))
-        pick_ids = [int(k) for k,v in staff_map.items() if v in picks]
-        if st.button("Assign selected to camp"):
-            assign_staff(selected_camp_id, pick_ids)
-            st.success("Assigned staff to camp.")
-    else:
-        st.info("Add camps and staff first.")
-
-    st.markdown("### Current Assignments")
-    st.dataframe(fetch_assignments(), use_container_width=True)
-
-# ---------------------------
-# PAGE: Reports
-# ---------------------------
-elif page == "Reports":
-    st.subheader("📈 Reports & Exports")
-    staff_df = fetch_staff_df()
-    camps_df = fetch_camps_df()
-    assignments_df = fetch_assignments()
-
-    st.markdown("#### Quick stats")
-    st.write("Total staff:", len(staff_df))
-    st.write("Total camps:", len(camps_df))
-
-    st.markdown("#### Export full dataset to Excel")
-    out = io.BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        staff_df.to_excel(writer, index=False, sheet_name="Staff")
-        camps_df.to_excel(writer, index=False, sheet_name="Camps")
-        assignments_df.to_excel(writer, index=False, sheet_name="Assignments")
-    st.download_button("Download staff_data_export.xlsx", out.getvalue(), file_name="staff_data_export.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    st.markdown("#### Attendance overview")
-    if not staff_df.empty:
-        fig = px.histogram(staff_df, x="camps_attended", nbins=20, title="Camps Attended Distribution")
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=load_setting('text', DEFAULT_THEME['text']))
-        st.plotly_chart(fig, use_container_width=True)
-
-# ---------------------------
-# PAGE: Settings
-# ---------------------------
-elif page == "Settings":
-    st.subheader("⚙️ Settings - Theme & App")
-    st.markdown("Change app colors. These are saved and applied immediately.")
-
-    primary = st.color_picker("Sidebar color (Primary)", value=load_setting("primary", DEFAULT_THEME["primary"]))
-    card = st.color_picker("Card background color", value=load_setting("card", DEFAULT_THEME["card"]))
-    accent = st.color_picker("Accent / Gradient color", value=load_setting("accent", DEFAULT_THEME["accent"]))
-    bg = st.color_picker("App background color", value=load_setting("bg", DEFAULT_THEME["bg"]))
-    textc = st.color_picker("Main text color", value=load_setting("text", DEFAULT_THEME["text"]))
-
-    if st.button("Save Theme"):
-        save_setting("primary", primary)
-        save_setting("card", card)
-        save_setting("accent", accent)
-        save_setting("bg", bg)
-        save_setting("text", textc)
-        st.success("Theme saved — re-rendering styles.")
-        render_css()
-
-    st.markdown("#### Reset data (danger zone)")
-    if st.button("Reset ALL data (staff, camps, assignments)"):
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM staff")
-        cur.execute("DELETE FROM camps")
-        cur.execute("DELETE FROM assignments")
-        conn.commit()
-        conn.close()
-        st.success("All data cleared.")
+        selected_camp_id = int(camps_df
