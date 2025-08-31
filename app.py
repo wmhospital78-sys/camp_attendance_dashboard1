@@ -1,158 +1,145 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
-import os
 import io
 
-# App Title
 st.set_page_config(page_title="Camp Attendance Dashboard", layout="wide")
 
-st.markdown("<h2 style='text-align: center; color: teal;'>White Memorial Homoeo Medical College & Hospital</h2>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center;'>Attoor, Veeyanoor P.O, Kanniyakumari District</h4>", unsafe_allow_html=True)
-st.markdown("---", unsafe_allow_html=True)
+# ---------------------------
+# Welcome Header
+# ---------------------------
+st.markdown("<h2 style='text-align:center; color:teal;'>White Memorial Homoeo Medical College & Hospital</h2>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align:center;'>Attoor, Veeyanoor (PO), Kanniyakumari District</h4>", unsafe_allow_html=True)
+st.markdown("---")
+st.success("👋 Welcome Dr. Shabin — Hospital Admin")
 
-# Welcome message
-st.sidebar.success("Welcome Dr. Shabin — Hospital Admin")
+# ---------------------------
+# Initialize session state
+# ---------------------------
+if "staff" not in st.session_state:
+    st.session_state.staff = pd.DataFrame(columns=["Name", "Category", "Year"])
+if "camps" not in st.session_state:
+    st.session_state.camps = pd.DataFrame(columns=["title", "camp_date"])
+if "camp_assignments" not in st.session_state:
+    st.session_state.camp_assignments = pd.DataFrame(columns=["Camp", "Staff"])
 
-DATA_FILE = "staff_data.xlsx"
-CAMP_FILE = "camp_schedule.xlsx"
+# ---------------------------
+# Sidebar Navigation
+# ---------------------------
+menu = st.sidebar.radio("📌 Navigation", ["Overview", "Manage Staff", "Manage Camps", "Export Data"])
 
-# Load or initialize staff data
-if os.path.exists(DATA_FILE):
-    staff_df = pd.read_excel(DATA_FILE)
-else:
-    staff_df = pd.DataFrame(columns=["Sl No", "Name", "Category", "Joining Date", "Year", "Camps Attended"])
+# ---------------------------
+# Overview
+# ---------------------------
+if menu == "Overview":
+    st.header("📊 Staff Overview")
 
-# Save function
-def save_data(df, filename):
-    df.to_excel(filename, index=False)
+    df = st.session_state.staff
 
-# Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Master Data", "📊 Overview", "📅 Camp Schedule", "📝 Reports", "⬆️ Import/Export"])
-
-# Master Data
-with tab1:
-    st.subheader("Master Data Entry")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        sl_no = st.number_input("Sl No", min_value=1)
-    with col2:
-        name = st.text_input("Name")
-    with col3:
-        category = st.selectbox("Category", ["Doctor", "Nursing Staff", "Teaching Faculty", "PG", "Internee"])
-
-    year = None
-    if category == "PG":
-        year = st.selectbox("PG Year", ["1st Year", "2nd Year", "3rd Year"])
-
-    joining_date = st.date_input("Joining Date", datetime.today())
-    camps_attended = st.number_input("Camps Attended", min_value=0)
-
-    if st.button("➕ Add Staff"):
-        new_entry = {"Sl No": sl_no, "Name": name, "Category": category, "Joining Date": joining_date, "Year": year, "Camps Attended": camps_attended}
-        staff_df = pd.concat([staff_df, pd.DataFrame([new_entry])], ignore_index=True)
-        save_data(staff_df, DATA_FILE)
-        st.success("✅ Staff Added Successfully!")
-
-    st.dataframe(staff_df)
-
-# Overview Tab
-with tab2:
-    st.subheader("Overview Dashboard")
-
-    if not staff_df.empty:
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("### Attendance by Category")
-            category_counts = staff_df.groupby("Category")["Camps Attended"].sum()
-            fig1, ax1 = plt.subplots()
-            category_counts.plot(kind="bar", ax=ax1)
-            st.pyplot(fig1)
-
-        with col2:
-            st.markdown("### Attendance Distribution")
-            fig2, ax2 = plt.subplots()
-            staff_df["Camps Attended"].plot(kind="hist", bins=10, ax=ax2)
-            st.pyplot(fig2)
-
-        st.markdown("### Category-wise Pie Chart")
-        fig3, ax3 = plt.subplots()
-        staff_df["Category"].value_counts().plot.pie(autopct="%1.1f%%", ax=ax3)
-        st.pyplot(fig3)
-
-# Camp Schedule
-with tab3:
-    st.subheader("Camp Scheduling")
-    if os.path.exists(CAMP_FILE):
-        camps = pd.read_excel(CAMP_FILE)
+    if df.empty:
+        st.info("No staff data available. Please add staff in 'Manage Staff'.")
     else:
-        camps = pd.DataFrame(columns=["Title", "Camp Date", "Staff Assigned"])
+        # Category distribution pie chart
+        cat_counts = df["Category"].value_counts()
 
-    camp_title = st.text_input("Camp Title")
-    camp_date = st.date_input("Camp Date")
-    staff_selected = st.multiselect("Assign Staff", staff_df["Name"].tolist())
+        fig, ax = plt.subplots()
+        ax.pie(cat_counts, labels=cat_counts.index, autopct="%1.1f%%", startangle=90)
+        ax.set_title("Staff Distribution by Category")
+        st.pyplot(fig)
 
-    if st.button("➕ Add Camp"):
-        new_camp = {"Title": camp_title, "Camp Date": camp_date, "Staff Assigned": ", ".join(staff_selected)}
-        camps = pd.concat([camps, pd.DataFrame([new_camp])], ignore_index=True)
-        save_data(camps, CAMP_FILE)
-        st.success("✅ Camp Scheduled Successfully!")
+        st.subheader("📋 Staff Count by Category")
+        st.write(cat_counts)
 
-    st.dataframe(camps)
+        # Filter option
+        cat_filter = st.multiselect("Filter by Category", df["Category"].unique(), default=df["Category"].unique())
+        st.dataframe(df[df["Category"].isin(cat_filter)])
 
-# Reports Tab
-with tab4:
-    st.subheader("Reports & Analysis")
-    if not staff_df.empty:
-        category_filter = st.selectbox("Select Category", ["All"] + staff_df["Category"].unique().tolist())
-        if category_filter != "All":
-            filtered_df = staff_df[staff_df["Category"] == category_filter]
-        else:
-            filtered_df = staff_df
-        st.dataframe(filtered_df)
+# ---------------------------
+# Manage Staff
+# ---------------------------
+elif menu == "Manage Staff":
+    st.header("👩‍⚕️ Manage Staff Data")
 
-        if st.button("📤 Export Report to Excel"):
-            report_file = "attendance_report.xlsx"
-            filtered_df.to_excel(report_file, index=False)
-            st.success(f"Report exported successfully as {report_file}")
+    with st.form("add_staff_form"):
+        name = st.text_input("Staff Name")
+        category = st.selectbox("Category", ["Doctor", "Nursing Staff", "Teaching Faculty", "PG", "Internee"])
+        year = None
+        if category == "PG":
+            year = st.number_input("Enter PG Year", min_value=1, max_value=5, step=1)
+        submitted = st.form_submit_button("Add Staff")
 
-# Import / Export
-with tab5:
-    st.subheader("Import / Export Excel")
-    uploaded = st.file_uploader("Upload Staff Excel File", type=["xlsx"])
-    if uploaded:
-        staff_df = pd.read_excel(uploaded)
-        save_data(staff_df, DATA_FILE)
-        st.success("✅ Data Imported Successfully!")
-        st.dataframe(staff_df)
+        if submitted and name:
+            st.session_state.staff = pd.concat(
+                [st.session_state.staff, pd.DataFrame([[name, category, year]], columns=["Name", "Category", "Year"])],
+                ignore_index=True
+            )
+            st.success(f"✅ {name} added as {category}")
 
-    if st.button("⬇️ Download Current Data"):
-        staff_df.to_excel("staff_data_export.xlsx", index=False)
-        st.success("✅ Data Exported Successfully as staff_data_export.xlsx")
-        import io
+    st.subheader("📋 Current Staff")
+    st.dataframe(st.session_state.staff)
 
-# Example: exporting dataframe
-# --- Staff Data Export Section ---
-import io
+# ---------------------------
+# Manage Camps
+# ---------------------------
+elif menu == "Manage Camps":
+    st.header("🏥 Camp Management")
 
-st.subheader("📤 Export Staff Data")
+    with st.form("add_camp_form"):
+        title = st.text_input("Camp Title")
+        camp_date = st.date_input("Camp Date")
+        add_camp = st.form_submit_button("Add Camp")
 
-if st.button("Export Staff Data to Excel"):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        # Example: export your staff dataframes separately
-        doctors.to_excel(writer, index=False, sheet_name="Doctors")
-        nursing_staff.to_excel(writer, index=False, sheet_name="Nursing Staff")
-        teaching_faculty.to_excel(writer, index=False, sheet_name="Teaching Faculty")
-        pgs.to_excel(writer, index=False, sheet_name="PGs")
-        internees.to_excel(writer, index=False, sheet_name="Internees")
+        if add_camp and title:
+            st.session_state.camps = pd.concat(
+                [st.session_state.camps, pd.DataFrame([[title, camp_date]], columns=["title", "camp_date"])],
+                ignore_index=True
+            )
+            st.success(f"✅ Camp '{title}' added.")
 
-    st.success("✅ Data Exported Successfully!")
-    st.download_button(
-        label="📥 Download Exported Excel",
-        data=output.getvalue(),
-        file_name="staff_data_export.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    st.subheader("📋 Existing Camps")
+    st.dataframe(st.session_state.camps)
+
+    if not st.session_state.camps.empty and not st.session_state.staff.empty:
+        st.subheader("👥 Assign Staff to Camps")
+
+        camp_sel = st.selectbox("Select Camp", [f"{r['title']} — {r['camp_date']}" for _, r in st.session_state.camps.iterrows()])
+        staff_sel = st.multiselect("Select Staff", st.session_state.staff["Name"].tolist())
+
+        if st.button("Assign"):
+            for s in staff_sel:
+                st.session_state.camp_assignments = pd.concat(
+                    [st.session_state.camp_assignments, pd.DataFrame([[camp_sel, s]], columns=["Camp", "Staff"])],
+                    ignore_index=True
+                )
+            st.success("✅ Staff assigned to camp successfully.")
+
+        st.subheader("📋 Camp Assignments")
+        st.dataframe(st.session_state.camp_assignments)
+
+# ---------------------------
+# Export Data
+# ---------------------------
+elif menu == "Export Data":
+    st.header("📂 Export Data")
+
+    df = st.session_state.staff
+    camps = st.session_state.camps
+    assign = st.session_state.camp_assignments
+
+    if st.button("Export All Data to Excel"):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            if not df.empty:
+                df.to_excel(writer, index=False, sheet_name="Staff")
+            if not camps.empty:
+                camps.to_excel(writer, index=False, sheet_name="Camps")
+            if not assign.empty:
+                assign.to_excel(writer, index=False, sheet_name="Assignments")
+
+        st.download_button(
+            label="📥 Download Excel",
+            data=output.getvalue(),
+            file_name="staff_data_export.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        st.success("✅ Data Exported Successfully")
